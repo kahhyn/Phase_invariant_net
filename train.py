@@ -31,7 +31,6 @@ def build_model(
             branch_layers=branch_layers,
             kernel_size=kernel_size,
             use_norm=use_norm,
-            gate_type=gate_type,
         )
     if name == "phase_invariant":
         return PhaseInvariantReceiver(
@@ -42,6 +41,7 @@ def build_model(
             branch_layers=branch_layers,
             kernel_size=kernel_size,
             use_norm=use_norm,
+            gate_type=gate_type
         )
     raise ValueError(f"Unknown model: {name}")
 
