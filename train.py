@@ -18,6 +18,7 @@ def build_model(
     branch_layers=2,
     kernel_size=3,
     use_norm=True,
+    gate_type="swiglu",
 ):
     if name == "real_imag_cnn":
         return RealImagCNN(hidden=hidden, bits_per_symbol=bits_per_symbol)
@@ -30,6 +31,7 @@ def build_model(
             branch_layers=branch_layers,
             kernel_size=kernel_size,
             use_norm=use_norm,
+            gate_type=gate_type,
         )
     if name == "phase_invariant":
         return PhaseInvariantReceiver(
@@ -131,6 +133,8 @@ def main():
     parser.add_argument("--branch_layers", type=int, default=2)
     parser.add_argument("--kernel_size", type=int, default=3)
     parser.add_argument("--no_norm", action="store_true")
+    parser.add_argument("--gate_type", type=str, default="swiglu",
+                        choices=["sigmoid", "swiglu"])
 
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=0.0)
@@ -187,6 +191,7 @@ def main():
         branch_layers=args.branch_layers,
         kernel_size=args.kernel_size,
         use_norm=not args.no_norm,
+        gate_type=args.gate_type,
     ).to(device)
 
     optimizer = torch.optim.AdamW(

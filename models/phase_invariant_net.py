@@ -76,6 +76,7 @@ class PhaseInvariantReceiver(nn.Module):
         branch_layers=2,
         kernel_size=3,
         use_norm=True,
+        gate_type="swiglu",
     ):
         super().__init__()
 
@@ -87,6 +88,7 @@ class PhaseInvariantReceiver(nn.Module):
             num_layers=branch_layers,
             kernel_size=kernel_size,
             use_norm=use_norm,
+            gate_type=gate_type,
         )
 
         self.neg_branch = ChargeBranch(
@@ -95,6 +97,7 @@ class PhaseInvariantReceiver(nn.Module):
             num_layers=branch_layers,
             kernel_size=kernel_size,
             use_norm=use_norm,
+            gate_type=gate_type,
         )
 
         self.interaction = EquivariantInteraction(

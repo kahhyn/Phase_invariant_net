@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class ComplexConv2d(nn.Module):
@@ -65,6 +66,28 @@ class AmplitudeGate(nn.Module):
         return gate * z
 
 
+class AmplitudeSwiGLUGate(nn.Module):
+    """
+    Phase-equivariant residual SwiGLU-style gate.
+
+    The gate and value branches only read |z|, so the multiplier is real-valued
+    and invariant to a global phase rotation. The residual form starts close to
+    the identity map and avoids repeatedly shrinking features with sigmoid gates.
+    """
+    def __init__(self, channels, residual_scale=0.1):
+        super().__init__()
+        self.proj = nn.Conv2d(channels, 2 * channels, kernel_size=1)
+        self.residual_scale = nn.Parameter(torch.tensor(float(residual_scale)))
+
+    def forward(self, z):
+        if not torch.is_complex(z):
+            raise TypeError("AmplitudeSwiGLUGate expects a complex tensor.")
+
+        gate, value = self.proj(torch.abs(z)).chunk(2, dim=1)
+        multiplier = 1.0 + self.residual_scale * F.silu(gate) * value
+        return multiplier * z
+
+
 class ComplexRMSNorm2d(nn.Module):
     """
     RMS normalization for non-zero charge complex features.
@@ -107,9 +130,13 @@ class ChargeBranch(nn.Module):
         num_layers=2,
         kernel_size=3,
         use_norm=True,
+        gate_type="swiglu",
     ):
         super().__init__()
         padding = kernel_size // 2
+
+        if gate_type not in ["sigmoid", "swiglu"]:
+            raise ValueError("gate_type must be 'sigmoid' or 'swiglu'.")
 
         layers = []
         c_in = in_channels
@@ -124,7 +151,10 @@ class ChargeBranch(nn.Module):
             )
             if use_norm:
                 layers.append(ComplexRMSNorm2d(hidden_channels))
-            layers.append(AmplitudeGate(hidden_channels))
+            if gate_type == "sigmoid":
+                layers.append(AmplitudeGate(hidden_channels))
+            else:
+                layers.append(AmplitudeSwiGLUGate(hidden_channels))
             c_in = hidden_channels
 
         self.layers = nn.ModuleList(layers)

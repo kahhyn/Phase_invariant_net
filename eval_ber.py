@@ -67,6 +67,8 @@ def main():
     parser.add_argument("--branch_layers", type=int, default=2)
     parser.add_argument("--kernel_size", type=int, default=3)
     parser.add_argument("--no_norm", action="store_true")
+    parser.add_argument("--gate_type", type=str, default="swiglu",
+                        choices=["sigmoid", "swiglu"])
 
     parser.add_argument("--out_csv", type=str, default="ber_results.csv")
 
@@ -83,6 +85,7 @@ def main():
         branch_layers=args.branch_layers,
         kernel_size=args.kernel_size,
         use_norm=not args.no_norm,
+        gate_type=args.gate_type,
     ).to(device)
 
     ckpt = torch.load(args.checkpoint, map_location=device)
