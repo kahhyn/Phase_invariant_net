@@ -1,0 +1,11 @@
+.idea/
+__pycache__/
+*/__pycache__/
+*.pyc
+runs/
+*.pt
+*.pth
+*.csv
+SANITY_CHECK*.txt
+.DS_Store
+Thumbs.db
