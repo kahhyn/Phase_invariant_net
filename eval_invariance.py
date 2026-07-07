@@ -24,6 +24,9 @@ def main():
     parser.add_argument("--hidden", type=int, default=32)
     parser.add_argument("--hidden_complex", type=int, default=16)
     parser.add_argument("--zero_complex", type=int, default=16)
+    parser.add_argument("--branch_layers", type=int, default=2)
+    parser.add_argument("--kernel_size", type=int, default=3)
+    parser.add_argument("--no_norm", action="store_true")
 
     args = parser.parse_args()
 
@@ -43,6 +46,9 @@ def main():
         hidden=args.hidden,
         hidden_complex=args.hidden_complex,
         zero_complex=args.zero_complex,
+        branch_layers=args.branch_layers,
+        kernel_size=args.kernel_size,
+        use_norm=not args.no_norm,
     ).to(device)
 
     if args.checkpoint:

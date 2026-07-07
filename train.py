@@ -9,17 +9,37 @@ from models import RealImagCNN, PhysicalFeatureCNN, PhaseInvariantReceiver
 from utils.metrics import masked_bce_with_logits, masked_ber
 
 
-def build_model(name, bits_per_symbol, hidden=32, hidden_complex=16, zero_complex=16):
+def build_model(
+    name,
+    bits_per_symbol,
+    hidden=32,
+    hidden_complex=16,
+    zero_complex=16,
+    branch_layers=2,
+    kernel_size=3,
+    use_norm=True,
+):
     if name == "real_imag_cnn":
         return RealImagCNN(hidden=hidden, bits_per_symbol=bits_per_symbol)
     if name == "physical_cnn":
-        return PhysicalFeatureCNN(hidden=hidden, bits_per_symbol=bits_per_symbol)
+        return PhysicalFeatureCNN(
+            hidden=hidden,
+            zero_complex=zero_complex,
+            hidden_real=hidden,
+            bits_per_symbol=bits_per_symbol,
+            branch_layers=branch_layers,
+            kernel_size=kernel_size,
+            use_norm=use_norm,
+        )
     if name == "phase_invariant":
         return PhaseInvariantReceiver(
             hidden_complex=hidden_complex,
             zero_complex=zero_complex,
             hidden_real=hidden,
             bits_per_symbol=bits_per_symbol,
+            branch_layers=branch_layers,
+            kernel_size=kernel_size,
+            use_norm=use_norm,
         )
     raise ValueError(f"Unknown model: {name}")
 
@@ -108,6 +128,9 @@ def main():
     parser.add_argument("--hidden", type=int, default=32)
     parser.add_argument("--hidden_complex", type=int, default=16)
     parser.add_argument("--zero_complex", type=int, default=16)
+    parser.add_argument("--branch_layers", type=int, default=2)
+    parser.add_argument("--kernel_size", type=int, default=3)
+    parser.add_argument("--no_norm", action="store_true")
 
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=0.0)
@@ -161,6 +184,9 @@ def main():
         hidden=args.hidden,
         hidden_complex=args.hidden_complex,
         zero_complex=args.zero_complex,
+        branch_layers=args.branch_layers,
+        kernel_size=args.kernel_size,
+        use_norm=not args.no_norm,
     ).to(device)
 
     optimizer = torch.optim.AdamW(
