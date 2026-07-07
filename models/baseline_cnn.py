@@ -2,6 +2,13 @@ import torch
 import torch.nn as nn
 
 
+def _make_group_norm(channels, max_groups=8):
+    for groups in range(min(max_groups, channels), 0, -1):
+        if channels % groups == 0:
+            return nn.GroupNorm(groups, channels)
+    return nn.GroupNorm(1, channels)
+
+
 def _ensure_complex_grid(x):
     """
     Accepts (B,T,F) or (B,1,T,F) complex tensor.
@@ -158,6 +165,7 @@ class PhysicalFeatureCNN(nn.Module):
         bits_per_symbol=2,
         branch_layers=2,
         kernel_size=3,
+        use_norm=True,
     ):
         super().__init__()
 
@@ -177,6 +185,8 @@ class PhysicalFeatureCNN(nn.Module):
                 padding=padding,
             )
         )
+        if use_norm:
+            layers.append(_make_group_norm(hidden))
         layers.append(nn.ReLU())
 
         for _ in range(branch_layers - 1):
@@ -188,6 +198,8 @@ class PhysicalFeatureCNN(nn.Module):
                     padding=padding,
                 )
             )
+            if use_norm:
+                layers.append(_make_group_norm(hidden))
             layers.append(nn.ReLU())
 
         # Match the real dimension of zero_complex complex zero-order features.
@@ -200,6 +212,9 @@ class PhysicalFeatureCNN(nn.Module):
                 kernel_size=1,
             )
         )
+        if use_norm:
+            layers.append(_make_group_norm(2 * zero_complex))
+            layers.append(nn.ReLU())
 
         self.feature_net = nn.Sequential(*layers)
 
@@ -208,8 +223,10 @@ class PhysicalFeatureCNN(nn.Module):
 
         self.llr_head = nn.Sequential(
             nn.Conv2d(llr_in_channels, hidden_real, kernel_size=3, padding=1),
+            _make_group_norm(hidden_real),
             nn.ReLU(),
             nn.Conv2d(hidden_real, hidden_real, kernel_size=3, padding=1),
+            _make_group_norm(hidden_real),
             nn.ReLU(),
             nn.Conv2d(hidden_real, bits_per_symbol, kernel_size=1),
         )

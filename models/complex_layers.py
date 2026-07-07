@@ -65,12 +65,49 @@ class AmplitudeGate(nn.Module):
         return gate * z
 
 
+class ComplexRMSNorm2d(nn.Module):
+    """
+    RMS normalization for non-zero charge complex features.
+
+    The scale is computed from |z|, so a global phase rotation changes only the
+    output phase and preserves equivariance:
+        norm(exp(j phi) z) = exp(j phi) norm(z)
+    """
+    def __init__(self, channels, eps=1e-6, affine=True):
+        super().__init__()
+        self.eps = eps
+
+        if affine:
+            self.weight = nn.Parameter(torch.ones(1, channels, 1, 1))
+        else:
+            self.register_parameter("weight", None)
+
+    def forward(self, z):
+        if not torch.is_complex(z):
+            raise TypeError("ComplexRMSNorm2d expects a complex tensor.")
+
+        rms = torch.sqrt(torch.mean(torch.abs(z) ** 2, dim=(-2, -1), keepdim=True) + self.eps)
+        out = z / rms
+
+        if self.weight is not None:
+            out = self.weight * out
+
+        return out
+
+
 class ChargeBranch(nn.Module):
     """
     Branch for a fixed non-zero charge, e.g. +1 or -1.
     All operations preserve the charge.
     """
-    def __init__(self, in_channels, hidden_channels, num_layers=2, kernel_size=3):
+    def __init__(
+        self,
+        in_channels,
+        hidden_channels,
+        num_layers=2,
+        kernel_size=3,
+        use_norm=True,
+    ):
         super().__init__()
         padding = kernel_size // 2
 
@@ -85,6 +122,8 @@ class ChargeBranch(nn.Module):
                     bias=False,  # critical for non-zero charge
                 )
             )
+            if use_norm:
+                layers.append(ComplexRMSNorm2d(hidden_channels))
             layers.append(AmplitudeGate(hidden_channels))
             c_in = hidden_channels
 

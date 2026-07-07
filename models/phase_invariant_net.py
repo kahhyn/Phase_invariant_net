@@ -4,6 +4,13 @@ import torch.nn as nn
 from .complex_layers import ChargeBranch, EquivariantInteraction
 
 
+def _make_group_norm(channels, max_groups=8):
+    for groups in range(min(max_groups, channels), 0, -1):
+        if channels % groups == 0:
+            return nn.GroupNorm(groups, channels)
+    return nn.GroupNorm(1, channels)
+
+
 def _prepare_complex_input(Y, H_hat):
     """
     Accepts Y and H_hat with shape:
@@ -68,6 +75,7 @@ class PhaseInvariantReceiver(nn.Module):
         bits_per_symbol=2,
         branch_layers=2,
         kernel_size=3,
+        use_norm=True,
     ):
         super().__init__()
 
@@ -78,6 +86,7 @@ class PhaseInvariantReceiver(nn.Module):
             hidden_channels=hidden_complex,
             num_layers=branch_layers,
             kernel_size=kernel_size,
+            use_norm=use_norm,
         )
 
         self.neg_branch = ChargeBranch(
@@ -85,6 +94,7 @@ class PhaseInvariantReceiver(nn.Module):
             hidden_channels=hidden_complex,
             num_layers=branch_layers,
             kernel_size=kernel_size,
+            use_norm=use_norm,
         )
 
         self.interaction = EquivariantInteraction(
@@ -98,8 +108,10 @@ class PhaseInvariantReceiver(nn.Module):
 
         self.llr_head = nn.Sequential(
             nn.Conv2d(llr_in_channels, hidden_real, kernel_size=3, padding=1),
+            _make_group_norm(hidden_real),
             nn.ReLU(),
             nn.Conv2d(hidden_real, hidden_real, kernel_size=3, padding=1),
+            _make_group_norm(hidden_real),
             nn.ReLU(),
             nn.Conv2d(hidden_real, bits_per_symbol, kernel_size=1),
         )
