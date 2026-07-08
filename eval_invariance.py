@@ -20,6 +20,8 @@ def main():
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--h_hat_mode", type=str, default="oracle_noisy",
                         choices=["oracle_noisy", "dmrs_ls_interp"])
+    parser.add_argument("--dmrs_freq_spacing", type=int, default=1)
+    parser.add_argument("--dmrs_freq_offset", type=int, default=0)
 
     parser.add_argument("--hidden", type=int, default=32)
     parser.add_argument("--hidden_complex", type=int, default=16)
@@ -38,6 +40,8 @@ def main():
         num_samples=args.batch_size * args.num_batches,
         h_hat_mode=args.h_hat_mode,
         phase_mode="fixed",
+        dmrs_freq_spacing=args.dmrs_freq_spacing,
+        dmrs_freq_offset=args.dmrs_freq_offset,
         seed=12345,
     )
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False)
