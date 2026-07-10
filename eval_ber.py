@@ -62,7 +62,13 @@ def parse_snr_list(text):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, required=True,
-                        choices=["real_imag_cnn", "physical_cnn", "phase_invariant", "complex_no_interaction"])
+                        choices=[
+                            "real_imag_cnn",
+                            "physical_cnn",
+                            "phase_invariant",
+                            "complex_no_interaction",
+                            "single_branch",
+                        ])
     parser.add_argument("--checkpoint", type=str, required=True)
     parser.add_argument("--phase_mode", type=str, default="uniform",
                         choices=["fixed", "narrow", "uniform"])
@@ -83,6 +89,8 @@ def main():
     parser.add_argument("--no_norm", action="store_true")
     parser.add_argument("--gate_type", type=str, default="swiglu",
                         choices=["sigmoid", "swiglu"])
+    parser.add_argument("--single_readout_mode", type=str, default="low_rank",
+                        choices=["low_rank", "full"])
 
     parser.add_argument("--out_csv", type=str, default="ber_results.csv")
 
@@ -100,9 +108,10 @@ def main():
         kernel_size=args.kernel_size,
         use_norm=not args.no_norm,
         gate_type=args.gate_type,
+        single_readout_mode=args.single_readout_mode,
     ).to(device)
 
-    ckpt = torch.load(args.checkpoint, map_location=device)
+    ckpt = torch.load(args.checkpoint, map_location=device, weights_only=True)
     model.load_state_dict(ckpt["model_state"])
 
     snr_values = parse_snr_list(args.snr_list)

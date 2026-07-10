@@ -26,6 +26,7 @@ def load_receiver(
     kernel_size,
     use_norm,
     gate_type,
+    single_readout_mode,
 ):
     model = build_model(
         model_name,
@@ -37,9 +38,10 @@ def load_receiver(
         kernel_size=kernel_size,
         use_norm=use_norm,
         gate_type=gate_type,
+        single_readout_mode=single_readout_mode,
     ).to(device)
 
-    ckpt = torch.load(checkpoint, map_location=device)
+    ckpt = torch.load(checkpoint, map_location=device, weights_only=True)
     state = ckpt["model_state"] if isinstance(ckpt, dict) and "model_state" in ckpt else ckpt
     model.load_state_dict(state)
     model.eval()
@@ -131,6 +133,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--phase_checkpoint", type=str, default="runs/debug/best.pt")
     parser.add_argument("--nointer_checkpoint", type=str, default="runs/debug/nointer/best.pt")
+    parser.add_argument("--single_checkpoint", type=str, default="")
     parser.add_argument("--snr_list", type=str, default="0,4,8,12,16,20")
     parser.add_argument("--phi_list", type=str, default="0,0.5235987756,1.0471975512,1.5707963268,2.0943951024,3.1415926536,4.1887902048,4.7123889804,5.235987756,6.2831853072")
     parser.add_argument("--phase_mode", type=str, default="uniform",
@@ -151,6 +154,8 @@ def main():
     parser.add_argument("--no_norm", action="store_true")
     parser.add_argument("--gate_type", type=str, default="swiglu",
                         choices=["sigmoid", "swiglu"])
+    parser.add_argument("--single_readout_mode", type=str, default="low_rank",
+                        choices=["low_rank", "full"])
 
     parser.add_argument("--out_csv", type=str, default="phase_sweep_results.csv")
     args = parser.parse_args()
@@ -170,6 +175,7 @@ def main():
             args.kernel_size,
             use_norm,
             args.gate_type,
+            args.single_readout_mode,
         ),
         "complex_no_interaction": load_receiver(
             "complex_no_interaction",
@@ -182,8 +188,23 @@ def main():
             args.kernel_size,
             use_norm,
             args.gate_type,
+            args.single_readout_mode,
         ),
     }
+    if args.single_checkpoint:
+        models["single_branch"] = load_receiver(
+            "single_branch",
+            args.single_checkpoint,
+            device,
+            args.hidden,
+            args.hidden_complex,
+            args.zero_complex,
+            args.branch_layers,
+            args.kernel_size,
+            use_norm,
+            args.gate_type,
+            args.single_readout_mode,
+        )
 
     snr_values = parse_float_list(args.snr_list)
     phi_values = parse_float_list(args.phi_list)

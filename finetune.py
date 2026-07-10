@@ -72,9 +72,10 @@ def load_model(args, device):
         kernel_size=args.kernel_size,
         use_norm=not args.no_norm,
         gate_type=args.gate_type,
+        single_readout_mode=args.single_readout_mode,
     ).to(device)
 
-    ckpt = torch.load(args.checkpoint, map_location=device)
+    ckpt = torch.load(args.checkpoint, map_location=device, weights_only=True)
     state = ckpt["model_state"] if isinstance(ckpt, dict) and "model_state" in ckpt else ckpt
     model.load_state_dict(state)
     return model, ckpt if isinstance(ckpt, dict) else {}
@@ -151,7 +152,13 @@ def write_history(path, rows):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, required=True,
-                        choices=["real_imag_cnn", "physical_cnn", "phase_invariant", "complex_no_interaction"])
+                        choices=[
+                            "real_imag_cnn",
+                            "physical_cnn",
+                            "phase_invariant",
+                            "complex_no_interaction",
+                            "single_branch",
+                        ])
     parser.add_argument("--checkpoint", type=str, required=True)
     parser.add_argument("--save_dir", type=str, required=True)
     parser.add_argument("--device", type=str, default="cuda")
@@ -164,6 +171,8 @@ def main():
     parser.add_argument("--no_norm", action="store_true")
     parser.add_argument("--gate_type", type=str, default="swiglu",
                         choices=["sigmoid", "swiglu"])
+    parser.add_argument("--single_readout_mode", type=str, default="low_rank",
+                        choices=["low_rank", "full"])
 
     parser.add_argument("--num_adapt", type=int, default=512)
     parser.add_argument("--num_val", type=int, default=4000)
