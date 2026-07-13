@@ -13,6 +13,12 @@ def masked_bce_with_logits(logits, bits, loss_mask):
     return (bce * loss_mask).sum() / denom
 
 
+def masked_bce_sum_and_count(logits, bits, loss_mask):
+    bce = F.binary_cross_entropy_with_logits(logits, bits, reduction="none")
+    bit_count = loss_mask.sum() * logits.shape[1]
+    return (bce * loss_mask).sum(), bit_count
+
+
 @torch.no_grad()
 def masked_ber(logits, bits, loss_mask):
     """
@@ -24,6 +30,14 @@ def masked_ber(logits, bits, loss_mask):
     err = (pred != bits).to(bits.dtype)
     denom = loss_mask.sum() * logits.shape[1] + 1e-12
     return (err * loss_mask).sum() / denom
+
+
+@torch.no_grad()
+def masked_bit_errors_and_count(logits, bits, loss_mask):
+    pred = (logits > 0).to(bits.dtype)
+    err = (pred != bits).to(bits.dtype)
+    bit_count = loss_mask.sum() * logits.shape[1]
+    return (err * loss_mask).sum(), bit_count
 
 
 @torch.no_grad()

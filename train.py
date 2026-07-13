@@ -2,149 +2,19 @@ import argparse
 from pathlib import Path
 
 import torch
-from torch.utils.data import DataLoader
 
-from data import OFDMDataset
-from models import (
-    ComplexCNNNoInteraction,
-    PhysicalFeatureCNN,
-    PhaseInvariantReceiver,
-    RealImagCNN,
-    SingleBranchPhaseInvariantReceiver,
-)
-from utils.metrics import masked_bce_with_logits, masked_ber
-
-
-def build_model(
-    name,
-    bits_per_symbol,
-    hidden=32,
-    hidden_complex=16,
-    zero_complex=16,
-    branch_layers=2,
-    kernel_size=3,
-    use_norm=True,
-    gate_type="swiglu",
-    single_readout_mode="low_rank",
-):
-    if name == "real_imag_cnn":
-        return RealImagCNN(hidden=hidden, bits_per_symbol=bits_per_symbol)
-    if name == "physical_cnn":
-        return PhysicalFeatureCNN(
-            hidden=hidden,
-            zero_complex=zero_complex,
-            hidden_real=hidden,
-            bits_per_symbol=bits_per_symbol,
-            branch_layers=branch_layers,
-            kernel_size=kernel_size,
-            use_norm=use_norm,
-        )
-    if name == "phase_invariant":
-        return PhaseInvariantReceiver(
-            hidden_complex=hidden_complex,
-            zero_complex=zero_complex,
-            hidden_real=hidden,
-            bits_per_symbol=bits_per_symbol,
-            branch_layers=branch_layers,
-            kernel_size=kernel_size,
-            use_norm=use_norm,
-            gate_type=gate_type
-        )
-    if name == "complex_no_interaction":
-        return ComplexCNNNoInteraction(
-            hidden_complex=hidden_complex,
-            hidden_real=hidden,
-            bits_per_symbol=bits_per_symbol,
-            branch_layers=branch_layers,
-            kernel_size=kernel_size,
-            use_norm=use_norm,
-            gate_type=gate_type,
-        )
-    if name == "single_branch":
-        return SingleBranchPhaseInvariantReceiver(
-            hidden_complex=hidden_complex,
-            zero_real=zero_complex,
-            hidden_real=hidden,
-            bits_per_symbol=bits_per_symbol,
-            num_blocks=branch_layers,
-            kernel_size=kernel_size,
-            use_norm=use_norm,
-            gate_type=gate_type,
-            readout_mode=single_readout_mode,
-        )
-    raise ValueError(f"Unknown model: {name}")
-
-
-def move_batch(batch, device):
-    out = {}
-    for k, v in batch.items():
-        if torch.is_tensor(v):
-            out[k] = v.to(device)
-        else:
-            out[k] = v
-    return out
-
-
-def train_one_epoch(model, loader, optimizer, device, log_interval):
-    model.train()
-
-    total_loss = 0.0
-    total_ber = 0.0
-    count = 0
-
-    for step, batch in enumerate(loader, start=1):
-        batch = move_batch(batch, device)
-
-        logits = model(batch["Y"], batch["H_hat"], batch["P"], batch["N0"])
-        loss = masked_bce_with_logits(logits, batch["bits"], batch["loss_mask"])
-        ber = masked_ber(logits.detach(), batch["bits"], batch["loss_mask"])
-
-        optimizer.zero_grad(set_to_none=True)
-        loss.backward()
-        optimizer.step()
-
-        total_loss += loss.item()
-        total_ber += ber.item()
-        count += 1
-
-        if log_interval > 0 and step % log_interval == 0:
-            print(f"  step {step:05d} | loss {total_loss/count:.5f} | BER {total_ber/count:.5f}")
-
-    return total_loss / max(count, 1), total_ber / max(count, 1)
-
-
-@torch.no_grad()
-def evaluate(model, loader, device):
-    model.eval()
-
-    total_loss = 0.0
-    total_ber = 0.0
-    count = 0
-
-    for batch in loader:
-        batch = move_batch(batch, device)
-
-        logits = model(batch["Y"], batch["H_hat"], batch["P"], batch["N0"])
-        loss = masked_bce_with_logits(logits, batch["bits"], batch["loss_mask"])
-        ber = masked_ber(logits, batch["bits"], batch["loss_mask"])
-
-        total_loss += loss.item()
-        total_ber += ber.item()
-        count += 1
-
-    return total_loss / max(count, 1), total_ber / max(count, 1)
+from data import DATASET_CHOICES, build_dataset, build_loader, ofdm_kwargs_from_args
+from engine import evaluate, move_batch, save_checkpoint, train_one_epoch
+from models import MODEL_CHOICES, build_model, build_model_from_args
+from utils.seed import set_seed
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, default="phase_invariant",
-                        choices=[
-                            "real_imag_cnn",
-                            "physical_cnn",
-                            "phase_invariant",
-                            "complex_no_interaction",
-                            "single_branch",
-                        ])
+                        choices=MODEL_CHOICES)
+    parser.add_argument("--dataset_type", type=str, default="ofdm",
+                        choices=DATASET_CHOICES)
 
     parser.add_argument("--train_phase_mode", type=str, default="fixed",
                         choices=["fixed", "narrow", "uniform"])
@@ -163,6 +33,13 @@ def main():
                         choices=["oracle_noisy", "dmrs_ls_interp"])
     parser.add_argument("--dmrs_freq_spacing", type=int, default=1)
     parser.add_argument("--dmrs_freq_offset", type=int, default=0)
+    parser.add_argument("--channel_kind", type=str, default="tdl",
+                        choices=["smooth", "iid", "tdl"])
+    parser.add_argument("--subcarrier_spacing_hz", type=float, default=30e3)
+    parser.add_argument("--num_paths", type=int, default=12)
+    parser.add_argument("--rms_delay_spread_s", type=float, default=10e-9)
+    parser.add_argument("--max_doppler_hz", type=float, default=200.0)
+    parser.add_argument("--rician_k_db", type=float, default=None)
 
     parser.add_argument("--hidden", type=int, default=32)
     parser.add_argument("--hidden_complex", type=int, default=16)
@@ -182,61 +59,45 @@ def main():
 
     parser.add_argument("--save_dir", type=str, default="runs/debug/")
     parser.add_argument("--device", type=str, default="cuda")
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--train_seed", type=int, default=None)
+    parser.add_argument("--val_seed", type=int, default=None)
+    parser.add_argument("--deterministic", action="store_true")
 
     args = parser.parse_args()
+    set_seed(args.seed, deterministic=args.deterministic)
 
     device = torch.device(args.device if torch.cuda.is_available() and args.device == "cuda" else "cpu")
     save_dir = Path(args.save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
 
-    train_set = OFDMDataset(
-        num_samples=args.num_train,
-        snr_db_min=args.snr_db_min,
-        snr_db_max=args.snr_db_max,
-        channel_error_std=args.channel_error_std,
-        h_hat_mode=args.h_hat_mode,
-        phase_mode=args.train_phase_mode,
-        dmrs_freq_spacing=args.dmrs_freq_spacing,
-        dmrs_freq_offset=args.dmrs_freq_offset,
-        seed=0,
+    train_set = build_dataset(
+        args.dataset_type,
+        **ofdm_kwargs_from_args(
+            args,
+            num_samples=args.num_train,
+            phase_mode=args.train_phase_mode,
+            seed=args.train_seed if args.train_seed is not None else args.seed,
+        ),
+    )
+    val_set = build_dataset(
+        args.dataset_type,
+        **ofdm_kwargs_from_args(
+            args,
+            num_samples=args.num_val,
+            phase_mode=args.val_phase_mode,
+            seed=args.val_seed if args.val_seed is not None else args.seed + 100000,
+        ),
     )
 
-    val_set = OFDMDataset(
-        num_samples=args.num_val,
-        snr_db_min=args.snr_db_min,
-        snr_db_max=args.snr_db_max,
-        channel_error_std=args.channel_error_std,
-        h_hat_mode=args.h_hat_mode,
-        phase_mode=args.val_phase_mode,
-        dmrs_freq_spacing=args.dmrs_freq_spacing,
-        dmrs_freq_offset=args.dmrs_freq_offset,
-        seed=100000,
+    train_loader = build_loader(
+        train_set, args.batch_size, shuffle=True, num_workers=args.num_workers, device=device
+    )
+    val_loader = build_loader(
+        val_set, args.batch_size, shuffle=False, num_workers=args.num_workers, device=device
     )
 
-    train_loader = DataLoader(
-        train_set, batch_size=args.batch_size,
-        shuffle=True, num_workers=args.num_workers,
-        pin_memory=(device.type == "cuda"),
-    )
-
-    val_loader = DataLoader(
-        val_set, batch_size=args.batch_size,
-        shuffle=False, num_workers=args.num_workers,
-        pin_memory=(device.type == "cuda"),
-    )
-
-    model = build_model(
-        args.model,
-        bits_per_symbol=2,
-        hidden=args.hidden,
-        hidden_complex=args.hidden_complex,
-        zero_complex=args.zero_complex,
-        branch_layers=args.branch_layers,
-        kernel_size=args.kernel_size,
-        use_norm=not args.no_norm,
-        gate_type=args.gate_type,
-        single_readout_mode=args.single_readout_mode,
-    ).to(device)
+    model = build_model_from_args(args, bits_per_symbol=2).to(device)
 
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -248,6 +109,7 @@ def main():
 
     print(f"Device: {device}")
     print(f"Model: {args.model}")
+    print(f"Dataset: {args.dataset_type} | Seed: {args.seed}")
     print(f"Train phase mode: {args.train_phase_mode} | Val phase mode: {args.val_phase_mode}")
 
     for epoch in range(1, args.epochs + 1):
@@ -265,17 +127,11 @@ def main():
             f"val loss {val_loss:.5f} | val BER {val_ber:.5f}"
         )
 
-        ckpt = {
-            "model_name": args.model,
-            "model_state": model.state_dict(),
-            "args": vars(args),
-        }
-
-        torch.save(ckpt, save_dir / "last.pt")
+        save_checkpoint(save_dir / "last.pt", model, args=args)
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            torch.save(ckpt, save_dir / "best.pt")
+            save_checkpoint(save_dir / "best.pt", model, args=args, best_val_loss=best_val_loss)
             print(f"  saved best checkpoint to {save_dir / 'best.pt'}")
 
 

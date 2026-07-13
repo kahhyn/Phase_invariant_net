@@ -5,7 +5,8 @@ import torch
 from torch.utils.data import DataLoader
 
 from data import OFDMDataset
-from train import build_model, move_batch
+from engine import move_batch
+from models import MODEL_CHOICES, build_model
 from utils.metrics import max_mean_abs_diff
 
 
@@ -13,13 +14,7 @@ from utils.metrics import max_mean_abs_diff
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, default="phase_invariant",
-                        choices=[
-                            "real_imag_cnn",
-                            "physical_cnn",
-                            "phase_invariant",
-                            "complex_no_interaction",
-                            "single_branch",
-                        ])
+                        choices=MODEL_CHOICES)
     parser.add_argument("--checkpoint", type=str, default="")
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--num_batches", type=int, default=5)

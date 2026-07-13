@@ -3,10 +3,10 @@ import csv
 from pathlib import Path
 
 import torch
-from torch.utils.data import DataLoader
 
-from data import OFDMDataset
-from train import build_model, evaluate, move_batch, train_one_epoch
+from data import build_dataset, build_loader
+from engine import evaluate, train_one_epoch
+from models import MODEL_CHOICES, build_model
 
 
 def optional_float(text):
@@ -32,7 +32,8 @@ def make_dataset(
     rician_k_db,
     seed,
 ):
-    return OFDMDataset(
+    return build_dataset(
+        "ofdm",
         num_samples=num_samples,
         snr_db_min=snr_db_min,
         snr_db_max=snr_db_max,
@@ -52,13 +53,7 @@ def make_dataset(
 
 
 def make_loader(dataset, batch_size, shuffle, num_workers, device):
-    return DataLoader(
-        dataset,
-        batch_size=batch_size,
-        shuffle=shuffle,
-        num_workers=num_workers,
-        pin_memory=(device.type == "cuda"),
-    )
+    return build_loader(dataset, batch_size, shuffle, num_workers, device)
 
 
 def load_model(args, device):
@@ -152,13 +147,7 @@ def write_history(path, rows):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, required=True,
-                        choices=[
-                            "real_imag_cnn",
-                            "physical_cnn",
-                            "phase_invariant",
-                            "complex_no_interaction",
-                            "single_branch",
-                        ])
+                        choices=MODEL_CHOICES)
     parser.add_argument("--checkpoint", type=str, required=True)
     parser.add_argument("--save_dir", type=str, required=True)
     parser.add_argument("--device", type=str, default="cuda")

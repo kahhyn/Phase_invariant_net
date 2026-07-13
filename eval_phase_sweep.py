@@ -7,7 +7,8 @@ import torch
 from torch.utils.data import DataLoader
 
 from data import OFDMDataset
-from train import build_model, move_batch
+from engine import move_batch
+from models import build_model
 from utils.metrics import masked_bce_with_logits, masked_ber
 
 
